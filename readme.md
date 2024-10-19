@@ -17,7 +17,6 @@ This project implements a Convolutional Neural Network (CNN) to predict handwrit
     - [Confusion Matrix](#confusion-matrix)
     - [Sample Predictions](#sample-predictions)
     - [Incorrect Predictions](#incorrect-predictions)
-  - [Contributing](#contributing)
   - [License](#license)
 
 ## Technologies Used
@@ -68,8 +67,6 @@ The evaluation metrics are saved in `metrics.json`, and plots are generated and 
 ### Incorrect Predictions
 ![Incorrect Predictions](./plots/Incorrectly_classified_images.png)
 
-## Contributing
-Contributions are welcome! If you have suggestions for improvements or new features, please create an issue or submit a pull request.
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
