@@ -1,0 +1,10 @@
+__pychache__/*
+logs/
+data_split.py
+__pycache__/
+data_split/X_train.npy
+/data/*
+data_split/X_val.npy
+data_split/Y_train.npy
+data_split/Y_val.npy
+model/model.h5
