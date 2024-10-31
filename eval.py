@@ -1,137 +1,129 @@
-import os
-import json
-import numpy as np
-import tensorflow as tf
-import logging
-from sklearn.metrics import (confusion_matrix, classification_report, 
-                             accuracy_score, precision_recall_fscore_support, 
-                             roc_auc_score)
-import seaborn as sns
+import torch
+import torch.nn as nn
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from sklearn.metrics import classification_report, confusion_matrix, roc_curve, auc
+from sklearn.preprocessing import label_binarize
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Check if GPU is available and set device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Load the data
-logging.info('Loading validation data...')
-X_val = np.load('./data_split/X_val.npy')
-Y_val = np.load('./data_split/Y_val.npy')
-logging.info('Validation data loaded successfully.')
+# Define the transform (without data augmentation for evaluation)
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
 
-# Load the model
-logging.info('Loading model...')
-model = tf.keras.models.load_model('./model/model.h5')
-logging.info('Model loaded successfully.')
+# Load the MNIST test dataset
+test_dataset = datasets.MNIST(root='./data', train=False, transform=transform, download=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=64, shuffle=False)
 
-# Get predictions
-logging.info('Getting predictions...')
-Y_pred = model.predict(X_val)
-Y_pred_classes = np.argmax(Y_pred, axis=1)
-Y_true_classes = np.argmax(Y_val, axis=1)
-logging.info('Predictions obtained successfully.')
 
-# Confusion Matrix
-cm = confusion_matrix(Y_true_classes, Y_pred_classes)
+# Define the CNN model
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.fc1 = nn.Linear(64 * 7 * 7, 128)
+        self.fc2 = nn.Linear(128, 10)
 
-# Classification Report
-report = classification_report(Y_true_classes, Y_pred_classes)
-logging.info('Classification report generated:\n%s', report)
+    def forward(self, x):
+        x = self.pool(torch.relu(self.conv1(x)))
+        x = self.pool(torch.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 7 * 7)
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
-# Accuracy
-accuracy = accuracy_score(Y_true_classes, Y_pred_classes)
-logging.info('Accuracy: %.4f', accuracy)
 
-# Precision, Recall, F1-Score
-precision, recall, f1_score, _ = precision_recall_fscore_support(Y_true_classes, Y_pred_classes, average='weighted')
-logging.info('Precision: %.4f', precision)
-logging.info('Recall: %.4f', recall)
-logging.info('F1-Score: %.4f', f1_score)
+# Instantiate the model and load the best weights
+model = CNN().to(device)
+model.load_state_dict(torch.load('best_model.pth'))
+model.eval()  # Set the model to evaluation mode
 
-# ROC AUC score
-roc = roc_auc_score(Y_val, Y_pred)
-logging.info('ROC AUC: %.4f', roc)
+# Evaluate the model on the test dataset
+correct = 0
+total = 0
+all_labels = []
+all_preds = []
+wrong_images = []
+wrong_labels = []
+wrong_preds = []
 
-# Save metrics to JSON
-metrics = {
-    'confusion_matrix': cm.tolist(),
-    'classification_report': classification_report(Y_true_classes, Y_pred_classes, output_dict=True),
-    'accuracy': accuracy,
-    'precision': precision,
-    'recall': recall,
-    'f1_score': f1_score,
-    'roc_auc': roc
-}
+with torch.no_grad():
+    for images, labels in test_loader:
+        images, labels = images.to(device), labels.to(device)
+        outputs = model(images)
+        _, predicted = torch.max(outputs.data, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
 
-with open('./metrics/metrics.json', 'w') as f:
-    json.dump(metrics, f, indent=4)
-logging.info('Metrics saved to metrics.json')
+        # Collect labels and predictions for AUC, confusion matrix, etc.
+        all_labels.extend(labels.cpu().numpy())
+        all_preds.extend(predicted.cpu().numpy())
 
-# Plots
+        # Collect wrongly predicted images
+        for i in range(len(labels)):
+            if predicted[i] != labels[i]:
+                wrong_images.append(images[i].cpu())
+                wrong_labels.append(labels[i].cpu().numpy())
+                wrong_preds.append(predicted[i].cpu().numpy())
 
-# Plotting the first 25 images
-logging.info('Plotting the first 25 images...')
-plt.figure(figsize=(10, 10))
-for i in range(25):
-    plt.subplot(5, 5, i + 1)
-    plt.xticks([])
-    plt.yticks([])
-    plt.grid(False)
-    plt.imshow(X_val[i], cmap=plt.cm.binary)
-    plt.xlabel(f'Predicted: {Y_pred_classes[i]}, True: {Y_true_classes[i]}')
-# plt.show()
-plt.savefig('./plots/First_25_images.png')
-logging.info('First 25 images plotted and saved to First_25_images.png.')
+# Calculate accuracy
+accuracy = 100 * correct / total
+print(f'Accuracy of the model on the test dataset: {accuracy:.2f}%')
 
-# Plot some false positives and false negatives
-false_positives = []
-false_negatives = []
-for i in range(len(Y_true_classes)):
-    if Y_true_classes[i] != Y_pred_classes[i]:
-        if Y_true_classes[i] < Y_pred_classes[i]:
-            false_positives.append(i)
-        else:
-            false_negatives.append(i)
+# Classification report
+print("\nClassification Report:")
+print(classification_report(all_labels, all_preds))
 
-if false_positives:
-    logging.info('Plotting false positives...')
-    plt.figure(figsize=(10, 10))
-    for i in range(min(25, len(false_positives))):
-        plt.subplot(5, 5, i + 1)
-        plt.xticks([])
-        plt.yticks([])
-        plt.grid(False)
-        plt.imshow(X_val[false_positives[i]], cmap=plt.cm.binary)
-        plt.xlabel(f'Predicted: {Y_pred_classes[false_positives[i]]}, True: {Y_true_classes[false_positives[i]]}')
-    # plt.show()
-    plt.savefig('./plots/Incorrectly_classified_images.png')
-    logging.info('False positives plotted and saved to Incorrectly_classified_images.png.')
-else:
-    logging.info('No false positives found.')
+# Confusion matrix
+conf_matrix = confusion_matrix(all_labels, all_preds)
+plt.figure(figsize=(10, 8))
+sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", xticklabels=range(10), yticklabels=range(10))
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.title("Confusion Matrix")
+plt.savefig('confusion_matrix.png')
+plt.show()
 
-if false_negatives:
-    logging.info('Plotting false negatives...')
-    plt.figure(figsize=(10, 10))
-    for i in range(min(25, len(false_negatives))):
-        plt.subplot(5, 5, i + 1)
-        plt.xticks([])
-        plt.yticks([])
-        plt.grid(False)
-        plt.imshow(X_val[false_negatives[i]], cmap=plt.cm.binary)
-        plt.xlabel(f'Predicted: {Y_pred_classes[false_negatives[i]]}, True: {Y_true_classes[false_negatives[i]]}')
-    # plt.show()
-    plt.savefig('./plots/Incorrectly_classified_images.png')
-    logging.info('False negatives plotted and saved to Incorrectly_classified_images.png.')
-else:
-    logging.info('No false negatives found.')
+# Calculate AUC-ROC
+all_labels_bin = label_binarize(all_labels, classes=range(10))
+all_preds_bin = label_binarize(all_preds, classes=range(10))
+fpr = dict()
+tpr = dict()
+roc_auc = dict()
 
-# Plotting the confusion matrix
-logging.info('Plotting the confusion matrix...')
-plt.figure(figsize=(10, 7))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-            xticklabels=np.arange(10), yticklabels=np.arange(10))
-plt.ylabel('Actual')
-plt.xlabel('Predicted')
-plt.title('Confusion Matrix')
-# plt.show()
-plt.savefig('./plots/Confusion_Matrix.png')
-logging.info('Confusion matrix plotted and saved to Confusion_Matrix.png.')
+for i in range(10):
+    fpr[i], tpr[i], _ = roc_curve(all_labels_bin[:, i], all_preds_bin[:, i])
+    roc_auc[i] = auc(fpr[i], tpr[i])
+
+# Plot AUC-ROC
+plt.figure()
+for i in range(10):
+    plt.plot(fpr[i], tpr[i], label=f'ROC curve (area = {roc_auc[i]:.2f}) for class {i}')
+plt.plot([0, 1], [0, 1], 'k--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic')
+plt.legend(loc="lower right")
+plt.savefig('roc_curve.png')
+plt.show()
+
+# Plot wrongly predicted images
+n_wrong = 5  # Number of wrong predictions to display
+plt.figure(figsize=(10, 5))
+for i in range(n_wrong):
+    plt.subplot(1, n_wrong, i + 1)
+    plt.imshow(wrong_images[i][0], cmap='gray')
+    plt.title(f'True: {wrong_labels[i]}, Pred: {wrong_preds[i]}')
+    plt.axis('off')
+plt.savefig('wrong_predictions.png')
+plt.show()

@@ -1,147 +1,122 @@
-import os
-import numpy as np
-import pandas as pd
-import datetime
-import matplotlib.pyplot as plt
-import seaborn as sns
-import logging
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
 
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from sklearn.model_selection import GridSearchCV, train_test_split
-from tensorflow.keras.callbacks import TensorBoard
-from tensorflow.keras.utils import to_categorical
+# Check if GPU is available and set the device to GPU if available; otherwise, use CPU
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Define hyperparameters for model training
+batch_size = 64  # Number of samples processed before updating model parameters
+learning_rate = 0.001  # Step size for each update to the weights
+num_epochs = 10  # Number of complete passes through the training dataset
 
-# Check if data is already split
-if not os.path.exists('./data_split/X_train.npy') and not os.path.exists('./data_split/Y_train.npy') and not os.path.exists('./data_split/X_val.npy') and not os.path.exists('./data_split/Y_val.npy'):
-    logging.info('Data not split. Splitting data...')
-    
-    train = pd.read_csv("./data/mnist_train.csv")
-    test = pd.read_csv("./data/mnist_test.csv")
+# Define the data transformation pipeline, including data augmentation
+transform = transforms.Compose([
+    transforms.RandomRotation(10),  # Rotates each image randomly within ±10 degrees
+    transforms.RandomAffine(0, translate=(0.1, 0.1)),  # Translates each image randomly by up to 10% of image size
+    transforms.ToTensor(),  # Converts the image to a tensor and scales pixel values to [0, 1]
+    transforms.Normalize((0.5,), (0.5,))  # Normalizes pixel values to [-1, 1] (mean=0.5, std=0.5)
+])
 
-    Y_train = train["label"]
-    X_train = train.drop(labels=["label"], axis=1)
+# Load the MNIST dataset with transformations applied, and organize it into DataLoader objects
+train_dataset = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
+test_dataset = datasets.MNIST(root='./data', train=False, transform=transform, download=True)
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
 
-    # Normalize the data
-    X_train = X_train / 255.0
-    test = test / 255.0
 
-    # Reshape image in 3 dimensions (height = 28px, width = 28px, canal = 1)
-    X_train = X_train.values.reshape(-1, 28, 28, 1)
+# Define the Convolutional Neural Network (CNN) model
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
 
-    # Encode labels to one-hot vectors
-    Y_train = to_categorical(Y_train, num_classes=10)
+        # First convolutional layer: accepts 1-channel grayscale images, outputs 32 channels
+        # Kernel size of 3x3 with stride 1 and padding 1 to maintain image dimensions
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
 
-    # Set the random seed
-    random_seed = 42
+        # Second convolutional layer: inputs 32 channels, outputs 64 channels
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
 
-    # Split the train and validation set for fitting
-    X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.1, random_state=random_seed)
+        # Max pooling layer: reduces each feature map dimension by 2x via max value selection
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-    # Save the X_train, Y_train, X_val, Y_val
-    np.save('./data_split/X_train.npy', X_train)
-    np.save('./data_split/Y_train.npy', Y_train)
-    np.save('./data_split/X_val.npy', X_val)
-    np.save('./data_split/Y_val.npy', Y_val)
+        # Fully connected layer: input is the flattened 64 * 7 * 7 tensor, output is 128 neurons
+        self.fc1 = nn.Linear(64 * 7 * 7, 128)
 
-    logging.info('Data splitting complete. Files saved.')
-else:
-    logging.info('Data already split. Loading the data...')
+        # Output layer: maps 128 neurons to 10 classes (one for each digit)
+        self.fc2 = nn.Linear(128, 10)
 
-# Load the data
-X_train = np.load('./data_split/X_train.npy')
-Y_train = np.load('./data_split/Y_train.npy')
-X_val = np.load('./data_split/X_val.npy')
-Y_val = np.load('./data_split/Y_val.npy')
+    def forward(self, x):
+        # Forward pass through conv1, ReLU activation, and max pooling
+        x = self.pool(torch.relu(self.conv1(x)))  # Resulting shape: (batch_size, 32, 14, 14)
 
-# Data augmentation
-def data_augmentation(X_train, Y_train):
-    logging.info('Starting data augmentation...')
-    datagen = ImageDataGenerator(
-        rotation_range=10,
-        zoom_range=0.1,
-        width_shift_range=0.1,
-        height_shift_range=0.1
-    )
-    
-    # Fit parameters from data
-    datagen.fit(X_train)
-    
-    logging.info('Data augmentation complete.')
-    return datagen
+        # Forward pass through conv2, ReLU activation, and max pooling
+        x = self.pool(torch.relu(self.conv2(x)))  # Resulting shape: (batch_size, 64, 7, 7)
 
-datagen = data_augmentation(X_train, Y_train)
+        # Flatten the output from the convolutional layers for the fully connected layer
+        x = x.view(-1, 64 * 7 * 7)  # Flatten to (batch_size, 3136)
 
-# Create the model
-def cnn(lr=0.001, hidden_layers=1, filters=16, kernel_size=3):
-    logging.info('Creating CNN model...')
-    # Create model
-    model = keras.Sequential()
-   
-    # Convolutional layers
-    model.add(layers.Conv2D(filters=filters, kernel_size=kernel_size, activation='relu', input_shape=(28, 28, 1)))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(layers.Conv2D(filters=filters, kernel_size=kernel_size, activation='relu'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(layers.Conv2D(filters=filters, kernel_size=kernel_size, activation='relu'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+        # Apply first fully connected layer with ReLU activation
+        x = torch.relu(self.fc1(x))
 
-    # Flattening
-    model.add(layers.Flatten())
-    model.add(layers.Dense(units=128, activation='relu'))
+        # Output layer: linear transformation to produce logits for each of the 10 classes
+        x = self.fc2(x)
+        return x
 
-    # Dropout layer to prevent overfitting
-    model.add(layers.Dropout(0.5))
 
-    # Output Layer
-    model.add(layers.Dense(units=10, activation='softmax'))
+# Instantiate the model, define the loss function (Cross Entropy Loss) and the optimizer (Adam)
+model = CNN().to(device)  # Move the model to the GPU if available
+criterion = nn.CrossEntropyLoss()  # Cross-entropy loss for multi-class classification
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)  # Adam optimizer with learning rate = 0.001
 
-    # Compile model
-    model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr),
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy'])
+# Initialize variable to track the best validation accuracy and model path
+best_accuracy = 0.0
+best_model_path = 'best_model.pth'
 
-    logging.info('CNN model created.')
-    return model
+# Training loop: iterate over the dataset for the specified number of epochs
+for epoch in range(num_epochs):
+    model.train()  # Set the model to training mode
+    for images, labels in train_loader:
+        # Move images and labels to the GPU if available
+        images, labels = images.to(device), labels.to(device)
 
-# Create the model
-model = cnn()
+        # Zero the parameter gradients before the backward pass
+        optimizer.zero_grad()
 
-# Train the model using the training sets, add checkpoints and tensorboard
-log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
+        # Forward pass: compute the model output and loss
+        outputs = model(images)  # Compute model predictions (logits)
+        loss = criterion(outputs, labels)  # Compute the cross-entropy loss
 
-logging.info('Starting model training...')
-history = model.fit(datagen.flow(X_train, Y_train), epochs=10, validation_data=(X_val, Y_val), callbacks=[tensorboard_callback])
-logging.info('Model training complete.')
+        # Backward pass: compute the gradient of the loss with respect to model parameters
+        loss.backward()
 
-# Save the model
-model.save('./model/model.h5')
-logging.info('Model saved to ./model/model.h5')
+        # Optimization step: update the model parameters
+        optimizer.step()
 
-# Plot the training and validation loss
-plt.figure(figsize=(10, 6))
-plt.plot(history.history['loss'], label='Training Loss')
-plt.plot(history.history['val_loss'], label='Validation Loss')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.legend()
-# plt.show()
-plt.savefig('./plots/loss.png')
-logging.info('Loss plot saved to ./plots/loss.png')
+    # Evaluate the model on the test set after each epoch to track performance
+    model.eval()  # Set the model to evaluation mode
+    correct = 0
+    total = 0
+    with torch.no_grad():  # No need to compute gradients during evaluation
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)  # Compute predictions on test set
+            _, predicted = torch.max(outputs.data, 1)  # Get index of the highest logit for each image
 
-# Plot the training and validation accuracy
-plt.figure(figsize=(10, 6))
-plt.plot(history.history['accuracy'], label='Training Accuracy')
-plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-plt.xlabel('Epochs')
-plt.ylabel('Accuracy')
-plt.legend()
-# plt.show()
-plt.savefig('./plots/accuracy.png')
-logging.info('Accuracy plot saved to ./plots/accuracy.png')
+            # Accumulate the number of correctly classified samples
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    # Calculate the accuracy as a percentage
+    accuracy = 100 * correct / total
+    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}, Accuracy: {accuracy:.2f}%')
+
+    # Save the model if the accuracy has improved
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        torch.save(model.state_dict(), best_model_path)  # Save the model's state_dict
+        print(f'Saved best model with accuracy: {best_accuracy:.2f}%')
+
+print(f'Best accuracy achieved: {best_accuracy:.2f}%')

@@ -1,72 +1,87 @@
-# MNIST Digit Prediction
+# MNIST Digit Classification using Convolutional Neural Networks (CNN)
 
-## Overview
-This project implements a Convolutional Neural Network (CNN) to predict handwritten digits from the MNIST dataset. The model is trained on a portion of the dataset and evaluated on a separate validation set. It utilizes data augmentation to improve model performance and generate various evaluation metrics, including accuracy, precision, recall, F1-score, and ROC AUC.
+This project implements a Convolutional Neural Network (CNN) to classify handwritten digits from the MNIST dataset. The model uses data augmentation for improved generalization and GPU support for enhanced performance.
 
 ## Table of Contents
-- [MNIST Digit Prediction](#mnist-digit-prediction)
-  - [Overview](#overview)
-  - [Table of Contents](#table-of-contents)
-  - [Technologies Used](#technologies-used)
-  - [Dataset](#dataset)
-  - [Training the Model](#training-the-model)
-  - [Evaluation](#evaluation)
-  - [Results](#results)
-    - [Accuracy](#accuracy)
-    - [Loss](#loss)
-    - [Confusion Matrix](#confusion-matrix)
-    - [Sample Predictions](#sample-predictions)
-    - [Incorrect Predictions](#incorrect-predictions)
-  - [License](#license)
 
-## Technologies Used
-- Python 3.x
-- TensorFlow
-- Keras
-- NumPy
-- Pandas
-- Matplotlib
-- Seaborn
-- Scikit-learn
+- [Installation](#installation)
+- [Usage](#usage)
+- [Data Augmentation](#data-augmentation)
+- [Model Saving](#model-saving)
+- [Training](#training)
+- [Evaluation](#evaluation)
+- [Results](#results)
+- [License](#license)
 
-## Dataset
-The MNIST dataset consists of 70,000 images of handwritten digits (0-9) and is commonly used for training various image processing systems. In this project, the dataset is split into training (60,000 images) and validation (10,000 images) sets.
+## Demo
 
-## Training the Model
-The CNN model consists of the following layers:
-- Three convolutional layers followed by max pooling layers.
-- A flatten layer to convert the 2D matrix into a 1D vector.
-- A dense layer with 128 neurons and ReLU activation.
-- A dropout layer to reduce overfitting.
-- An output layer with softmax activation for multi-class classification.
+![digit recognition](./Digit%20Recognition_screenshot_31.10.2024.png)
 
-The model is trained using the Adam optimizer and categorical cross-entropy loss.
+## Installation
+
+To get started, ensure you have Python and pip installed. You can then install the required packages with:
+
+```bash
+pip install torch torchvision matplotlib scikit-learn seaborn
+```
+
+## Usage
+
+1. Clone the repository:
+
+    ```bash
+    git clone https://github.com/driessenslucas/numbers_mnist
+    cd numbers_mnist
+    ```
+
+2. Run the training script:
+
+    ```bash
+    python train.py
+    ```
+
+   This will download the MNIST dataset, apply data augmentation, and train the CNN model.
+
+## Data Augmentation
+
+The project includes data augmentation techniques to improve model generalization, including:
+
+- **Random Rotation**: Images are randomly rotated by up to 10 degrees.
+- **Random Affine Transformation**: Images are randomly translated by up to 10% of the image dimensions.
+
+## Model Saving
+
+During training, the model saves the best-performing version based on validation accuracy to a file named `best_model.pth`.
+
+## Training
+
+The model is trained for 10 epochs. Training uses the Adam optimizer with a learning rate of 0.001 and a batch size of 64. Validation is done after each epoch to monitor performance and save the best model.
 
 ## Evaluation
-After training, the model's performance is evaluated using:
-- **Confusion Matrix**: Visualizes the classification results.
-- **Classification Report**: Displays precision, recall, F1-score, and accuracy.
-- **ROC AUC Score**: Measures the model's ability to distinguish between classes.
-- Various plots, including the first 25 validation images, incorrectly classified images, and the confusion matrix.
+
+To evaluate the trained model, run the following command:
+
+```bash
+python evaluate.py
+```
+
+This will load the best model, compute accuracy, AUC-ROC, confusion matrix, and display images of wrongly predicted digits.
+
+### Evaluation Outputs
+
+1. **Accuracy**: The overall accuracy of the model on the test dataset.
+2. **Classification Report**: Precision, recall, and F1-score for each digit class.
+3. **Confusion Matrix**: Visual representation of true vs. predicted classes.
+   ![Confusion Matrix](confusion_matrix.png)
+4. **AUC-ROC Curve**: ROC curve for each digit class, showing the AUC score for each.
+   ![ROC Curve](roc_curve.png)
+5. **Wrong Predictions**: Sample images where the model made incorrect predictions.
+   ![Wrong Predictions](wrong_predictions.png)
 
 ## Results
-The evaluation metrics are saved in `metrics.json`, and plots are generated and saved in the `./plots` directory.
 
-### Accuracy
-![Accuracy](./plots/accuracy.png)
-
-### Loss
-![Loss](./plots/loss.png)
-
-### Confusion Matrix
-![Confusion Matrix](./plots/Confusion_Matrix.png)
-
-### Sample Predictions
-![Sample Predictions](./plots/First_25_images.png)
-
-### Incorrect Predictions
-![Incorrect Predictions](./plots/Incorrectly_classified_images.png)
-
+The model achieves a high accuracy of **91.21%** on the test dataset, with AUC-ROC values close to 1 for most classes, indicating strong performance.
 
 ## License
+
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
