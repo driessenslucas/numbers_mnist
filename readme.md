@@ -4,18 +4,22 @@ This project implements a Convolutional Neural Network (CNN) to classify handwri
 
 ## Table of Contents
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [Data Augmentation](#data-augmentation)
-- [Model Saving](#model-saving)
-- [Training](#training)
-- [Evaluation](#evaluation)
-- [Results](#results)
-- [License](#license)
+- [MNIST Digit Classification using Convolutional Neural Networks (CNN)](#mnist-digit-classification-using-convolutional-neural-networks-cnn)
+  - [Table of Contents](#table-of-contents)
+  - [Demo](#demo)
+  - [Installation](#installation)
+  - [Usage](#usage)
+  - [Data Augmentation](#data-augmentation)
+  - [Model Saving](#model-saving)
+  - [Training](#training)
+  - [Evaluation](#evaluation)
+    - [Evaluation Outputs](#evaluation-outputs)
+  - [Results](#results)
+  - [License](#license)
 
 ## Demo
 
-![digit recognition](./Digit%20Recognition_screenshot_31.10.2024.png)
+![digit recognition](./Digit%20Recognition_screenshot_01.11.2024.png)
 
 ## Installation
 
